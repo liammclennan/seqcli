@@ -90,39 +90,53 @@ class ConfigCommand : Command
 
         Console.WriteLine(Format(pr.Value));
     }
+    
+    /// <summary>
+    /// Given an object `o = { a: { b: 2 }, c: "foo" }`
+    /// can set value like
+    /// * `SetDottedPath(o, "a.b", 7) => { a: { b: 7 }, c: "foo" }`
+    /// * `SetDottedPath(o, "c", "cat") => { a: { b: 7 }, c: "cat" }`
+    /// </summary>
+    static void SetDottedPath(object o, string key, string? value)
+    {
+        var prefix = key.Split('.')[0];
+        var nextProperty = o.GetType().GetTypeInfo().DeclaredProperties
+            .Where(p => p.CanRead && p.GetMethod!.IsPublic && !p.GetMethod.IsStatic)
+            .SingleOrDefault(p => Camelize(p.Name) == prefix);
+        
+        if (nextProperty == null)
+            throw new ArgumentException($"The key ({key}) could not be found; run the command without any arguments to view all keys.");
 
-    static void Set(SeqCliConfig config, string key, string? value)
+        var isLastProperty = !key.Contains('.');
+        
+        if (isLastProperty)
+        {
+            if (nextProperty!.PropertyType.IsEnum)
+            {
+                if (Enum.TryParse(nextProperty!.PropertyType, value, out var enumString))
+                {
+                    nextProperty!.SetValue(o, enumString);
+                    return;
+                }
+                throw new ArgumentException($"Unable to parse {value} for property {key}");
+            }
+
+            nextProperty!.SetValue(o, string.IsNullOrEmpty(value) ? null 
+                : Convert.ChangeType(value, Nullable.GetUnderlyingType(nextProperty!.PropertyType) ?? nextProperty!.PropertyType, CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            var rest = key.Substring(prefix.Length + 1);
+            SetDottedPath(nextProperty!.GetValue(o)!, rest, value);
+        }
+    }
+
+    public static void Set(SeqCliConfig config, string key, string? value)
     {
         if (config == null) throw new ArgumentNullException(nameof(config));
-        if (key == null) throw new ArgumentNullException(nameof(key));
-
-        var steps = key.Split('.');
-        if (steps.Length != 2)
-            throw new ArgumentException("The format of the key is incorrect; run the command without any arguments to view all keys.");
-
-        var first = config.GetType().GetTypeInfo().DeclaredProperties
-            .Where(p => p.CanRead && p.GetMethod!.IsPublic && !p.GetMethod.IsStatic)
-            .SingleOrDefault(p => Camelize(p.Name) == steps[0]);
-
-        if (first == null)
-            throw new ArgumentException("The key could not be found; run the command without any arguments to view all keys.");
-
-        if (first.PropertyType == typeof(Dictionary<string, ConnectionConfig>))
-            throw new NotSupportedException("Use `seqcli profile create` to configure connection profiles.");
-
-        var second = first.PropertyType.GetTypeInfo().DeclaredProperties
-            .Where(p => p.CanRead && p.GetMethod!.IsPublic && !p.GetMethod.IsStatic)
-            .SingleOrDefault(p => Camelize(p.Name) == steps[1]);
-
-        if (second == null)
-            throw new ArgumentException("The key could not be found; run the command without any arguments to view all keys.");
-            
-        if (!second.CanWrite || !second.SetMethod!.IsPublic)
-            throw new ArgumentException("The value is not writeable.");
-
-        var targetValue = Convert.ChangeType(value, second.PropertyType, CultureInfo.InvariantCulture);
-        var configItem = first.GetValue(config);
-        second.SetValue(configItem, targetValue);
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentNullException(nameof(key));
+        
+        SetDottedPath(config, key, value);
     }
 
     static void Clear(SeqCliConfig config, string key)
@@ -139,7 +153,7 @@ class ConfigCommand : Command
         }
     }
 
-    static IEnumerable<KeyValuePair<string, object?>> ReadPairs(object config)
+    public static IEnumerable<KeyValuePair<string, object?>> ReadPairs(object config)
     {
         foreach (var property in config.GetType().GetTypeInfo().DeclaredProperties
                      .Where(p => p.CanRead && p.GetMethod!.IsPublic && !p.GetMethod.IsStatic && !p.Name.StartsWith("Encoded"))
