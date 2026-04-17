@@ -51,7 +51,7 @@ class CreateCommand : Command
         
         Options.Add(
             "delete=",
-            "Stream incoming events to this app instance as they're ingested; optionally accepts a signal expression limiting which events should be streamed",
+            "The policy should delete all events matching the provided signal expression",
             s =>
             {
                 _deleteMatchingSignal = s;

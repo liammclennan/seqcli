@@ -27,3 +27,20 @@ public class LicenseApplyTestCase : ICliTestCase
         return Task.CompletedTask;
     }
 }
+
+public class LicenseAutoRefreshTestCase : ICliTestCase
+{
+
+    public LicenseAutoRefreshTestCase()
+    {
+    }
+        
+    public Task ExecuteAsync(SeqConnection connection, ILogger logger, CliCommandRunner runner)
+    {
+        runner.Exec("license autorefresh", "--enable");
+        Assert.Contains(
+            "The license format is invalid: data precedes any keys.",
+            runner.LastRunProcess!.Output.Trim());
+        return Task.CompletedTask;
+    }
+}

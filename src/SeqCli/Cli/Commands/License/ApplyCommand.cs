@@ -12,6 +12,9 @@ using Serilog;
 
 namespace  SeqCli.Cli.Commands.License;
 
+
+
+
 [Command("license", "apply", "Apply a license to the Seq server",
     Example = "seqcli license apply --certificate=\"license.txt\"")]
 class ApplyCommand : Command
@@ -21,7 +24,7 @@ class ApplyCommand : Command
     
     string? _certificateFilename;
     bool _certificateStdin;
-    bool _automaticallyRefresh;
+    bool?  _automaticallyRefresh;
         
     public ApplyCommand()
     {
@@ -32,11 +35,20 @@ class ApplyCommand : Command
         Options.Add("certificate-stdin",
             "Read the license certificate from `STDIN`",
             _ => _certificateStdin = true);
-
-        Options.Add("automatically-refresh",
+        
+        Options.Add("automatically-refresh=",
             "If the license is for a subscription, periodically check `datalust.co` and automatically refresh " +
-            "the certificate when the subscription is changed or renewed",
-            _ => _automaticallyRefresh = true);
+            "the certificate when the subscription is changed or renewed; value can be `true` or `false`",
+            v =>
+            {
+                if ("true".Equals(v, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    _automaticallyRefresh = true;
+                } else if ("false".Equals(v, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    _automaticallyRefresh = false;
+                }
+            });
             
         _storagePath = Enable<StoragePathFeature>();
         _connection = Enable<ConnectionFeature>();
@@ -75,7 +87,12 @@ class ApplyCommand : Command
         var connection = SeqConnectionFactory.Connect(_connection, config);
         var license = await connection.Licenses.FindCurrentAsync();
         license.LicenseText = certificate;
-        license.AutomaticallyRefresh = _automaticallyRefresh;
+
+        if (_automaticallyRefresh.HasValue)
+        {
+            license.AutomaticallyRefresh = _automaticallyRefresh.Value;
+        }
+        
         await connection.Licenses.UpdateAsync(license);
         return 0;
     }
